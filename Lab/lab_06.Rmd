@@ -1,0 +1,140 @@
+---
+title: "Lab 06 -- Multiple and Non-Linear Regression"
+author: JINRAN YANG
+date: Assignment due by 11:59PM on Sunday, 9/23/2018
+output:
+  html_document:
+  theme: simplex
+  fig_caption: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Getting started
+
+In this assignment, you will apply multiple regression tools to the Boston Housing Data, which consist of housing values in suburbs of Boston taken from the 1970 Census. The data set also contains other information that may affect house prices, such as the crime rate in the area and the proportion of owner-occupied houses. The data set and data dictionary can be found at [Boston Housing Data](https://archive.ics.uci.edu/ml/machine-learning-databases/housing/).
+
+In RStudio, create a folder called `lab-06` and set this folder as your working directory.  Download to your lab directory the `housing.data` and `housing.names` files from the Boston Housing Data archive to a sub-directory of called `data_housing`. You can perform these steps manually, but a more reproducible approach is to perform these steps using R commands.
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+
+# Make data directory
+dir.create("data_housing")
+
+# Download data
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.data" %>% 
+  download.file("data_housing/housing.data")
+
+# Download data dictionary
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.names" %>% 
+  download.file("data_housing/housing.names")
+
+# Variable names from housing.names
+variables <- c("CRIM", "ZN", "INDUS",  "CHAS", "NOX", "RM", "AGE", 
+               "DIS", "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
+
+# Read in the data
+housing_data <- read_table("data_housing/housing.data", col_names = variables)
+```
+
+
+# Problem 1: Simple linear regression
+
+* Using `ggplot`, create a scatter plot with `DIS` on the x-axis, and `MEDV` on the y-axis.
+* Estimate a simple linear model where the outcome is the median value of owner-occupied homes (in $1000's) and the explanatory variable is the weighted distances to five Boston employment centers. Save the result of this regression in a variable called `lm_dis`.
+* Use the package `stargazer` to display the results of this regression. Is the estimated coefficient for `DIS` statistically significant (more than two standard errors away from zero)? 
+* In plain English, interpret the estimated coefficient on `DIS`. Your interpretation should include the units of both the outcome and explanatory variable.
+* What is the MSE of this model? 
+
+```{r}
+require(stargazer) 
+
+# Scatter plot
+housing_data%>%
+  ggplot()+
+geom_point(aes(y = MEDV,x =DIS))
+
+# Simple linear regression
+lm_dis <- lm(housing_data$MEDV~housing_data$DIS)
+summary(lm_dis)
+# Show regression output using stargazer package
+stargazer(lm_dis,type="text", df = FALSE, omit.stat = c("adj.rsq", "ser", "f"))
+# Calculate MSE of the model
+mse_dis = mean(lm_dis$residuals^2)
+mse_dis
+```
+<br>The estimated coefficient for DIS is statistically significant (more than two standard errors away from zero).
+<br>Each one unit increase in weighted distances to five Boston employment centres increase the median housing price by 1.092 unit (in $1000's).
+
+# Problem 2: Multiple linear regression
+
+* Building on the simple linear model `lm_dis`, estimate a multiple linear regression of `MEDV` that also controls for the full-value property-tax rate per $10,000. Save the result of this regression in a variable called `lm_tax`.
+* Building on the simple linear model `lm_tax`, estimate a multiple linear regression of `MEDV` that also controls for nitric oxides concentration (parts per 10 million). Save the result of this regression in a variable called `lm_nox`.
+* Building on the simple linear model `lm_nox`, estimate a multiple linear regression of `MEDV` that also controls for percent of the population with low socioeconomic status. Save the result of this regression in a variable called `lm_ses`.
+* Report regressions results from all four models above in the same table using the `stargazer()` command. Does the coefficient on `DIS` change across models? What can we learn from these regressions about the relationship between distance to employment centers and median home values?
+
+```{r, warning=FALSE}
+# lm_tax model
+lm_tax <-lm(housing_data$MEDV ~ housing_data$DIS + housing_data$TAX)
+# lm_nox model
+lm_nox <-lm(housing_data$MEDV ~ housing_data$DIS + housing_data$TAX+housing_data$NOX)
+# lm_ses model
+lm_ses <-lm(housing_data$MEDV ~ housing_data$DIS + housing_data$TAX+housing_data$NOX+housing_data$LSTAT)
+# Show all four models above using stargazer function
+stargazer(lm_dis,lm_tax, lm_nox,lm_ses, type="text", df = FALSE, omit.stat = c("adj.rsq", "ser", "f"))
+```
+
+<br>The coefficient on `DIS` changes a lot, it changes from 1.092 to -1.206 step by step.
+<br>For the lm_dis model, each one unit increase in weighted distances to five Boston employment centres increase the median housing price by 1.092 unit.一个unit??????多少钱
+<br>For the lm_tax model, each one unit increase in weighted distances to five Boston employment centres decrease the median housing price by 0.003 unit.
+<br>For the lm_nox model, each one unit increase in weighted distances to five Boston employment centres decrease the median housing price by 0.917 unit. 
+<br>For the lm_ses model, each one unit increase in weighted distances to five Boston employment centres decrease the median housing price by 1.206 unit.
+
+
+# Problem 3: Comparing model fit
+* Using `ggplot`, create a plot with four layers. Each layer should have `DIS` on the x-axis. In the *first layer*, plot the actual values of `MEDV` on the y-axis, in black. In the *second layer*, plot the predicted values of `MEDV` from the `lm_tax` model in red.  In the *third layer*, plot the predicted values of `MEDV` from the `lm_nox` model in blue.  In the *fourth layer*, plot the predicted values of `MEDV` from the `lm_ses` model in green 
+* Visually, which model (`lm_tax`, `lm_nox`, or `lm_ses`) appears to do the best job of predicting median home values? (Optional: which model generates the lowest MSE?)
+* Consider: If we want to know how distance to employment centers affects home values, do you think it makes sense to include socioeconomic status of town residents, as in the `lm_ses` model? Why or why not?
+
+```{r}
+# One scatter plot with four layers, each with separate color
+housing_data%>%
+  ggplot()+ geom_point(aes(y = MEDV,x =DIS),color = "black") + geom_point(aes(y = lm_tax$fitted.values ,x = DIS ),color = "red") +geom_point(aes(y = lm_nox$fitted.values ,x = DIS ),color = "blue") + geom_point(aes(y = lm_ses$fitted.values ,x = DIS ),color = "green")
+
+MSE <- c(mean(lm_dis$residuals^2), mean(lm_tax$residuals^2), mean(lm_nox$residuals^2), mean(lm_ses$residuals^2))
+names(MSE)<-c("lm_dis","lm_tax","lm_nox","lm_ses")
+MSE
+```
+
+<br>"lm_ses" model appears to do the best job of predicting median home values.
+<br>"lm_ses" model generates the lowest MSE.
+<br> I think it makes sense to include socioeconomic status of town residents, as in the `lm_ses` model.Because apparently `lm_ses` does the best job, and `lm_ses` model considers the relationship between distance to employment centers and others predictors which makes it more reasonable.
+
+# Problem 4: Categorical variables
+Hint: the lecture handout for Lab 06 (Multiple linear regression > Categorical predictors) uses code that may be relevant for parts of this problem.
+
+When modeling data, it is often useful to convert a continuous numeric variable to a categorical variable by dividing the range of the variable into intervals. In R, this can be accomplised using the `cut()` function to create a new, categorical variable.
+
+* Create a categorical variable `DIS_10` defined by splitting the `DIS` variable into deciles (10 groups).
+* Using the categorical variable `DIS_10`, along with the `summarise` and `group_by` functions, what is the average value of `MEDV` by decile of `DIS`?
+* Estimate a linear regression with `MEDV` as the outcome and `DIS_10` as a factor variable. Which category is omitted? How do the coefficients from this regression relate to the summary statistics table from the previous bullet point? 
+
+```{r}
+# Categorical variable DIS_10 indicating decile of DIS
+DIS_10<- cut(housing_data$DIS,breaks = 10)
+
+# Summary statis of MEDV by DIS_10
+housing_data1 <- cbind(housing_data,DIS_10)
+summarize(group_by(housing_data1,DIS_10),mean(MEDV))
+
+# Linear regression of MEDV ~ DIS_10
+lm_DIS_10 <- lm(MEDV ~ DIS_10,data = housing_data1)
+stargazer(lm_DIS_10, type = "text")
+
+```
+<br> Which category is omitted?
+<br>The first catgory (1.12,2.23] is ommitted. And by using this method,the difference of different distances in the same group.
+<br>How do the coefficients from this regression relate to the summary statistics table from the previous bullet point?
+<br>The difference between the mean value of group n and group 1 equals to the coefficient of group n .
