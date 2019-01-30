@@ -1,0 +1,281 @@
+---
+title: "Lab 08 -- Cross-Validation"
+author: JINRAN YANG
+date: Assignment due by 11:59PM on Friday, 10/5/2017
+output:
+  html_document:
+  theme: simplex
+fig_caption: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Getting started
+In this section we provide an application of the cross-validation methods to the Boston Housing Data, which consist of housing values in suburbs of Boston taken from the 1970 Census. The data set also contains other information that may affect house prices, such as the crime rate in the area and the proportion of owner-occupied houses. The data set and data dictionary can be found at [Boston Housing Data](https://archive.ics.uci.edu/ml/machine-learning-databases/housing/).
+
+In RStudio, create a folder called `lab-08` and set this folder as your working directory.  Download to your lab directory the `housing.data` and `housing.names` files from the Boston Housing Data archive to a sub-directory of called `data_housing`. You can perform these steps manually, but a more reproducible approach is to perform these steps using R commands.
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(boot)
+library(knitr)
+
+# Make data directory
+dir.create("data_housing")
+
+# Download data
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.data" %>% 
+  download.file("data_housing/housing.data")
+
+# Download data dictionary
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.names" %>% 
+  download.file("data_housing/housing.names")
+
+# Variable names from housing.names
+variables <- c("CRIM", "ZN", "INDUS",  "CHAS", "NOX", "RM", "AGE", 
+               "DIS", "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
+
+# Read data
+housing_data <- read_table("data_housing/housing.data", col_names = variables)
+names(housing_data)
+```
+
+# Problem 1: Validation Set Approach
+In this exercise you will test four different linear models of MEDV. Start with a simple linear model and proceed by adding explanatory variables. Estimate the following models:
+
+1. A simple linear model of MEDV as a function of DIS.
+```{r}
+lm1<-lm(MEDV~DIS,data = housing_data)
+summary(lm1)
+```
+
+2. Add TAX as a control to the previous model.
+```{r}
+lm2<-lm(MEDV~DIS+TAX,data = housing_data)
+summary(lm2)
+```
+
+3. Add NOX as a control to the previous model.
+```{r}
+lm3<-lm(MEDV~DIS+TAX+NOX,data = housing_data)
+summary(lm3)
+```
+
+4. Add LSTAT as a control to the previous model.
+```{r}
+lm4<-lm(MEDV~DIS+TAX+NOX+LSTAT,data = housing_data)
+summary(lm4)
+
+```
+
+Compute the cross-validated MSE of each model using the Validation Set Approach, as follows. Pick a random seed, then randomly split the data into two folds. Designate one fold to be the training fold and one to be the test fold. Estimate each model using the training data, then calculate the mean squared prediction error that the model generates in the test data. You should code this procedure yourself, rather than using a packaged command for estimating cross-validated MSE.
+```{r}
+set.seed(1)
+train <- sample(506, 253)
+# model 1
+lm_1 <- lm(MEDV ~DIS, data = housing_data, subset = train)
+lm_1_mse <- mean((housing_data$MEDV - predict(lm_1, housing_data))[-train]^2)
+lm_1_mse
+
+# model 2
+lm_2 <- lm(MEDV ~ DIS+TAX, data = housing_data, subset = train)
+lm_2_mse <- mean((housing_data$MEDV - predict(lm_2, housing_data))[-train]^2)
+lm_2_mse
+
+# model 3
+lm_3<-lm(MEDV ~ DIS + TAX + NOX, data = housing_data,subset = train)
+lm_3_mse<- mean((housing_data$MEDV- predict(lm_3,housing_data))[-train]^2)
+lm_3_mse
+
+# model 4
+lm_4<-lm(MEDV ~ DIS+TAX+NOX+LSTAT, data = housing_data, subset = train)
+lm_4_mse<-mean((housing_data$MEDV- predict(lm_4,housing_data))[-train]^2)
+lm_4_mse
+```
+
+Based on the cross-validated MSE you just calculated, which model is best for predicting median home values? Does your answer change if you repeat the steps above using a different random seed? What does this say about the Validation Set method to select models? 
+
+<br> Model 4 (`MEDV ~ DIS+TAX+NOX+LSTAT`) is the best for predicting median home values for each model. `Validation Set method` uses different dataset by randomly divide the data into 2 parts--training dataset and testing dataset to do training and testing respectively. And the MSE value calculated by using `Validation Set method` changes if different random seed is used, since the seed decides the training and testing dataset drawn from the original dataset by `Validation Set method`. But the best model model selected by the `Validation Set method` is consistent, the MSE of model 4 (`MEDV ~ DIS+TAX+NOX+LSTAT`) is always the smallest no matter what random seed is set.
+
+
+# Problem 2: Leave-One-Out Cross-Validation (LOOCV)
+Repeat the exercise from Problem 1, but now use LOOCV for calculated mean squared prediction error. You may code this procedure yourself, or you may use the `cv.glm()` function from the `boot` package.
+
+```{r}
+
+# model 1
+glm_1 <- glm(MEDV ~DIS, data = housing_data)
+cv_err_1 <-cv.glm(housing_data,glm_1)
+cv_err_1$delta[1]
+
+# model 2
+glm_2 <- glm(MEDV ~ DIS+TAX, data = housing_data)
+cv_err_2<- cv.glm(housing_data,glm_2)
+cv_err_2$delta[1]
+
+# model 3
+glm_3<-glm(MEDV ~ DIS+TAX+NOX, data = housing_data)
+cv_err_3<-cv.glm(housing_data,glm_3)
+cv_err_3$delta[1]
+
+# model 4
+glm_4<-glm(MEDV ~ DIS+TAX+NOX+LSTAT, data = housing_data)
+cv_err_4<-cv.glm(housing_data,glm_4)
+cv_err_4$delta[1]
+```
+
+Which model is best according to the LOOCV method? Does your answer depend on your choice of random seed? Why or why not?
+
+<br>According to the LOOCV method, model 4`(MEDV ~ DIS+TAX+NOX+LSTAT)` is the best. LOOCV method doesn't need a random seed, because basically every observation will be treated as test data once. So, actually LOOCV method will train number of observation (506 here) many models by using all but one observation and then use that one observation as test data. Thus, LOOCV method don't need a random seed and the best model selected by the LOOCV doesn't depend on random seed.
+
+
+# Problem 3: k-Fold Cross-Validation
+Repeat the exercise from problem 1, but now calculate k-fold cross-validation prediction errors for each of the models in Problem 1. Use a unique sample (seed) and compute k-fold cross validations first using 5 folds, and again using 10 folds. You may code this procedure yourself, or you may use the `cv.glm()` function from the `boot` package.
+
+```{r}
+set.seed(1)
+
+# K = 5
+cv_err_k5_1 <- cv.glm(housing_data, glm_1, K = 5)
+cv_err_k5_2 <- cv.glm(housing_data, glm_2, K = 5)
+cv_err_k5_3 <- cv.glm(housing_data, glm_3, K = 5)
+cv_err_k5_4 <- cv.glm(housing_data, glm_4, K = 5)
+# Cross-validation estimate of prediction error (first term - not adjusted)
+cv_err_k5_1$delta[1]#first term is what we want - not adjusted
+cv_err_k5_2$delta[1]
+cv_err_k5_3$delta[1]
+cv_err_k5_4$delta[1]
+
+# K = 10
+cv_err_k10_1 <- cv.glm(housing_data, glm_1, K = 10)
+cv_err_k10_2 <- cv.glm(housing_data, glm_2, K = 10)
+cv_err_k10_3 <- cv.glm(housing_data, glm_3, K = 10)
+cv_err_k10_4 <- cv.glm(housing_data, glm_4, K = 10)
+
+# Cross-validation estimate of prediction error (first term - not adjusted)
+cv_err_k10_1$delta[1]
+cv_err_k10_2$delta[1]
+cv_err_k10_3$delta[1]
+cv_err_k10_4$delta[1]
+
+
+```
+
+Which model is best acording to 5-fold CV MSE? Which model is best acording to 10-fold CV MSE? How does 5-fold versus 10-fold MSE compare for each model? Briefly discuss some pros and cons of using 5-fold versus 10-fold cross-validation.
+
+<br>Model 4`(MEDV ~ DIS+TAX+NOX+LSTAT)` is the best model in both 5-fold CV and 10-fold CV. 10-fold CV gives less biased estimation of true accuracy, but it is more costly which means it is more computationally intensive than 5-fold CV. As for 5-fold CV, it is less cost than 10-fold CV, but it is less accurate than 10-fold CV. However, as we can see from the result, the result of 5-fold CV and 10-fold CV actually are pretty close to each other .
+
+
+
+# Problem 4: True MSE versus estimated MSE
+This problem is optional. If you are able to solve it, feel free to let the Professor know.
+
+When generating predictions, our goal is to understand the true relationship between the predictors and the outcome of interest. If an oracle told you the true, fundamental relationship, you would be able to generate the best possible predictions. Even in this perfect world, predictions might still have error if there remains any irreducibly random component influencing the outcome. This irreducible error can be thought of as the "true" MSE generated by the correct model.
+
+In this exercise you will work with simulated data, for which we know the true relationship between predicors and the outcome. We can use this knowledge to calulate the true MSE. The goal of this exercise is to calculate cross-validated MSE using the various approaches discussed in class, and compare these estimates to the true MSE.
+
+**Part I** - find the true MSE
+
+1. Create a vector called `id` that goes from 1 to 200.
+
+2. Create a vector called `nox` containing 200 observations drawn from a Normal distribution with mean 0.55 and variance of 0.1.
+
+3. Generate a vector `medv` given by $medv_i = 20 + 50*nox_i - 7*nox_i^2 + u_i$, where $u_i$ is drawn from a standard Normal distribution.
+
+4. Compute the true MSE from this model. In other words, if an oracle told you the true relationship between $nox_i$ and $medv_i$, what would be the resulting MSE of the predictions you would generate?
+
+```{r}
+set.seed(139)
+id <- as.vector(c(1:200),mode = "any")
+nox <-as.vector(rnorm(200,mean = 0.55, sd = sqrt(0.1)))
+u <- as.vector(rnorm(200,mean = 0, sd = 1))
+medv<-as.vector(rep(0,200))
+for(i in id){
+  medv[i] = 20 + 50*nox[i] - 7*nox[i]^2 + u[i]
+}
+lm_p4<-glm(medv~poly(nox,2))
+summary(lm_p4)
+lm_p4_mse<- mean((medv-predict(lm_p4))^2)
+lm_p4_mse
+```
+<BR>If an oracle told me the true relationship between $nox_i$ and $medv_i$, the resulting MSE of the predictions I would generate should be 1 which is the var($u$). And we can see from the result, 0.9633187 is pretty close to 1.
+
+
+
+
+**Part II** - compute the CV MSE
+
+Using the Validation Set Approach, LOOCV and the k-Fold Cross Validation with K =  10, estimate the MSE of the following models:
+
+$$medv_i = \alpha + \beta nox_i + \epsilon_i$$
+$$medv_i = \alpha + \beta_1 nox_i + \beta_2 nox_i^2 + \epsilon_i$$
+$$medv_i = \alpha + \beta_1 nox_i + \beta_2 nox_i^2 + \beta_3 nox_i^3 + \beta_4 nox_i^4 + \beta_5 nox_i^5 + \beta_6 nox_i^6 + \epsilon_i$$
+```{r}
+
+dataset<-data.frame(medv,nox)
+
+#Validation Set Approach
+# model 1
+set.seed(123)
+train <- sample(200, 100)
+lm_p40 <- lm(medv~nox, data =dataset,subset = train)
+lm_p40_mse <- mean((medv - predict(lm_p40,dataset))[-train]^2)
+lm_p40_mse
+
+# model 2
+set.seed(123)
+train <- sample(200, 100)
+lm_p41 <- lm(medv~poly(nox,2),data =dataset,subset = train)
+lm_p41_mse <- mean((medv - predict(lm_p41,dataset))[-train]^2)
+lm_p41_mse
+
+# model 3
+set.seed(123)
+train <- sample(200, 100)
+lm_p42 <- lm(medv~poly(nox,6),data =dataset,subset = train)
+lm_p42_mse <- mean((medv - predict(lm_p42,dataset))[-train]^2)
+lm_p42_mse
+
+#Leave-One-Out Cross-Validation (LOOCV)
+# model 1
+glm_p40 <- glm(medv~nox,data = dataset)#Leave-One-Out Cross-Validation (LOOCV)
+cv_err_p40 <-cv.glm( dataset,glm_p40)
+cv_err_p40$delta[1]
+
+# model 2
+glm_p41 <- glm(medv~poly(nox,2),data = dataset)#Leave-One-Out Cross-Validation (LOOCV)
+cv_err_p41 <-cv.glm( dataset,glm_p41)
+cv_err_p41$delta[1]
+
+# model 3
+glm_p42 <- glm(medv~poly(nox,6),data = dataset)#Leave-One-Out Cross-Validation
+cv_err_p42 <-cv.glm( dataset,glm_p42)
+cv_err_p42$delta[1]
+
+# Cross-validation estimate of prediction error
+# model 1
+cv_err_k10 <- cv.glm(dataset,glm_p40, K = 10)  #k-Fold Cross-Validation
+cv_err_k10$delta[1]#first term is what we want - not adjusted
+
+# model 2
+cv_err_k10_41 <- cv.glm(dataset,glm_p41, K = 10)  #k-Fold Cross-Validation
+cv_err_k10_41$delta[1]#first term is what we want - not adjusted
+
+# model 3
+cv_err_k10_42 <- cv.glm(dataset,glm_p42, K = 10)  #k-Fold Cross-Validation
+cv_err_k10_42$delta[1]#first term is what we want - not adjusted
+
+data1<-c(lm_p40_mse,lm_p41_mse,lm_p42_mse)
+data2<-c(cv_err_p40$delta[1],cv_err_p41$delta[1],cv_err_p42$delta[1])
+data3<-c(cv_err_k10$delta[1],cv_err_k10_41$delta[1],cv_err_k10_42$delta[1])
+table<-cbind(data1,data2,data3)
+rownames(table)<-c("Model 1","Model 2","Model 3")
+colnames(table)<-c("Validation Set","LOOCV","Cross-validation")
+kable(table,format = "html", digital =5,longtable = TRUE)
+```
+
+<br>Which approach (validation set, LOOCV, or 10-fold CV) generates estimates of MSE closest to the true MSE when estimating the correct model? Which model does each cross-validation approach indicate is the best model? Is the correct (true) model selected?
+
+<br>MSE estimates generated by LOOCV are closest to the true MSE(0.9633187) when estimating the correct mode, but the result of the LOOCV and 10-fold CV are very close ; Cross-validation approach indicates $medv_i = \alpha + \beta_1 nox_i + \beta_2 nox_i^2 + \epsilon_i$ is the best model, since the MSE of model 2 is the least; Yes,the correct (true) model is selected.
+
