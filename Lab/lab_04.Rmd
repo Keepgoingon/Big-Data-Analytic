@@ -1,0 +1,126 @@
+---
+title: "Lab 04 - Data visualization"
+author: JINRAN YANG
+date: Assignment due by 11:59PM on Sunday, September 16, 2018
+output:
+  html_document:
+  theme: simplex
+  fig_caption: true
+---
+
+# Getting started
+In this assignment, you will generate graphs using the Freddie Mac data using the `ggplot2` package.
+
+In all problems, remember to format your plots. Choose a title and a label to the axes. You can also modify the legend, color and size of the plots and other aspects that make your plot easier to interpret.
+
+Start by loading `ggplot2` and `tidyverse` packages. Also load the Freddie Mac data you downloaded from S3, per the assignment instructions.
+```{r, message=FALSE}
+library(tidyverse)
+load("data/cleaned_Freddie_Mac.Rdata")
+library(ggplot2)
+```
+
+# Problem 1: Histogram
+Using `ggplot`, create a histogram of credit scores. Use a bin width of 5 for the histogram. Use "firebrick" as the bar fill color, and "white" as the bar border color. Set the background color of the plot area to be white, with grey gridlines (hint: here are some `ggplot2` [theme examples](https://www.r-bloggers.com/ggplot2-themes-examples/), with documentation [here](http://ggplot2.tidyverse.org/reference/ggtheme.html). 
+
+Remember the data set is a panel, meaning that you have multiple observations for the same mortgage over time. Before making a histogram, use `filter()` to eliminate the duplicated observations--i.e. keep only one credit score per mortgage. (After dropping duplicates, you should be left with 3,000 observations.)
+
+Histograms are useful to see the distribution of a unique variable. Notice the range and concentration of credit scores. What does it tell you about individuals that have access to mortgages?
+
+```{r}
+
+orig_svcg1<-orig_svcg%>%
+mutate(duplicated = duplicated(id_loan,incomparables = FALSE))%>%
+filter(duplicated == 0)
+  
+p<-ggplot(orig_svcg1, aes(fico)) +
+  geom_histogram(binwidth = 5,fill = "firebrick", na.rm = T)
+#range(orig_svcg1$fico,na.rm = T)
+  
+p+theme_minimal()+ggtitle("Histogram of FICO score") +
+  xlab("FICO") + ylab("Count")
+
+
+```
+
+
+
+The range of credit score is [300,826]. Credit score concerntrates on [680,780].
+
+# Problem 2: Bar graph
+Using `ggplot`, create a bar graph showing default rates by state. Using the same color scheme as with the histogram above.
+
+This figure provides information on how default rates have varied across different regions of the U.S. Remember these are loans originated between 2005 and 2007. 
+
+```{r}
+orig_svcg2<-orig_svcg%>%
+  group_by(st)%>%
+mutate(default_rate = sum(default)/length(id_loan))%>%
+  mutate(duplicated = duplicated(st,incomparables = FALSE))%>%
+filter(duplicated == 0)
+  
+ggplot(orig_svcg2)+ geom_bar(fill = "firebrick",stat="identity",aes(x=st,y=default_rate))+ggtitle("Default Rates by State") +xlab("State") + ylab("Default Rates")+theme_minimal()
+orig_svcg2 = ungroup(orig_svcg2)
+```
+
+
+# Problem 3: Map (advanced and optional)
+This problem is advanced, and completely optional. Using `ggplot`, make a "heat" map of default rates across the 48 contiguous U.S. states. In other words, this figure shows the same information as plotted in the Bar Graph of Problem 2, but displayed in map format. If you figure this out, email the Professor and let him know!
+
+```{r}
+
+
+
+
+```
+
+# Problem 4: Line graph
+Plot the default rates by month in a line graph.
+
+First, inform R that `svcg_cycle` is a date, using the the `as.Date()` function. The data frame includes only month and year, but for R to interpret it as a date you will also need to provide a day. To format the x-axis, the `scale_x_date()` from `ggplot2` may be useful.
+
+This graph shows how the default rates developed over time. Is this what you expected? 
+
+```{r}
+orig_svcg3<-orig_svcg%>%
+select(default)%>%
+mutate(svcg_cycle1 = paste(floor(orig_svcg$svcg_cycle/100),"-",
+                           floor(orig_svcg$svcg_cycle - floor(orig_svcg$svcg_cycle/100)*100),"-","01",sep = ""))%>% #add day
+group_by(svcg_cycle1)%>%
+mutate(default_rate=sum(default)/length(svcg_cycle1))#calculate the default_rate
+
+##year = floor(orig_svcg2$svcg_cycle/100)
+##month = floor(orig_svcg2$svcg_cycle - year*100)
+orig_svcg3 = ungroup(orig_svcg3)
+orig_svcg4<-orig_svcg3%>%
+mutate(svcg_cycle2=as.Date(orig_svcg3$svcg_cycle1))%>%
+  mutate(duplicated = duplicated(svcg_cycle2,incomparables = FALSE))%>%
+filter(duplicated == 0)
+
+ggplot(orig_svcg4, aes(svcg_cycle2,default_rate),na.rm = T) + geom_line(col = "firebrick")+scale_x_date()+ggtitle("Default Rate by Month") +xlab("Date") + ylab("Default Rate")+theme_minimal()
+```
+
+
+
+According to the graph, the default rate was increasing between 2005 and 2013 overall. It begins to decrease from 2013 to 2016 and it achieved maximum at 2013.
+
+
+# Problem 5: Scatter plot + trendline
+Using `ggplot`, create a scatter plot of the default rates by credit score. Also estimate a linear trendline, and add this to the map. Edit the elements of your plot (e.g. colors, title, labels, etc.) so that it looks like the following figure:
+
+![](data/plot_advanced.PNG)
+
+```{r}
+
+
+orig_svcg5<-orig_svcg%>%
+  group_by(fico)%>%
+mutate(default_rate = sum(default)/length(id_loan))%>%
+   mutate(duplicated = duplicated(id_loan),incomparables = FALSE)%>%
+filter(duplicated == 0)
+
+ggplot(orig_svcg5,aes(x = fico, y= default_rate))+geom_point(color = "dark red",na.rm = T)+ggtitle("Default rate by FICO score") +
+  xlab("FICO") + ylab("Default rate")+geom_smooth(method = "lm",color = "black")+theme_minimal()
+```
+
+
