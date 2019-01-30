@@ -1,0 +1,187 @@
+---
+title: "Lab 09 -- Lasso"
+author: JINRAN YANG
+date: Assignment due by 11:59PM on Sunday, 10/14/2018
+output:
+  html_document:
+  theme: simplex
+fig_caption: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Getting started
+In this assignment you will apply Lasso techniques to predict the current unpaid balance in mortgages using the Single Family Loan-Level Data Set, from Freddie Mac. The data and more details can be obtained [here](http://www.freddiemac.com/research/datasets/sf_loanlevel_dataset.html). In the User Guide, the section `File Layout & Data Dictionary` contains the description of each variable in the data sets. 
+```{r}
+library(tidyverse)
+library(MASS)
+load("~/lab-09/orig_svcg_2015_Freddie_Mac.Rdata")
+```
+
+Start by loading the packages `tidyverse` and `MASS`. Also load the Freddie Mac data you downloaded from S3, per the assignment instructions. These data measure loan payment status 48 months after the scheduled first month of payment, for loans originating in 2005.
+
+# Problem 1: Lasso
+In this exercise you will fit a model using Lasso to predict the current unpaid balance (here identified by the variable `current_upb`). 
+
+Add two new variables `msa` and `other_servicers` to the data frame `orig_svcg_2005`. These variables should be defined as follows:
+
+* `msa`: equal to 1 if the mortgaged property is located in a MSA, and 0 otherwise. Drop the variable `cd_msa` from the data frame once you have created the `msa` variable.
+
+* `other_servicers`: equals 1 if the servicer name is in the category 'other servicers', and 0 otherwise. Drop the variable `servicer_name` from the data frame once you have created the `other_servicers` variable.
+```{r}
+orig_svcg_2005$msa<-ifelse(is.na(orig_svcg_2005$cd_msa),0,1)
+orig_svcg_2005<-orig_svcg_2005[,-5]
+orig_svcg_2005$other_servicers<-ifelse(orig_svcg_2005$servicer_name=="Other servicers",1,0)
+orig_svcg_2005<-orig_svcg_2005[,-9]
+orig_svcg_2005<-orig_svcg_2005[,-1]#drop id
+newdata <- na.omit(orig_svcg_2005)#removing the missing value
+```
+
+Complete the following steps to estimate a model of current unpaid balance as a function of all available predictors using Lasso estimation.
+
+a. Prepare to estimate a Lasso regression of current unpaid balance as a function of all available predictors in the data frame. First, create a vector `y` of outcomes. Second, using the `model.matrix` function, create a matrix `x` of predictors to include in the Lasso regression. The matrix `x` should not include a column of 1s (i.e. no intercept in the `x` matrix--this will be added automatically later). 
+```{r}
+y<-as.vector(newdata$current_upb)
+x<-model.matrix(current_upb~.,data = newdata)[,-1]
+```
+
+b. To estimate a Lasso regression, you must first choose a penalty parameter $\lambda$. One way to choose a penalty parameter is estimate Lasso separately for multiple values of $\lambda$, and then choose the $\lambda$ from that sequence that generates the best predictions (i.e. lowest CV-MSE). In this step, we will create a sequence of $\lambda$ values, and in the next step we will estimate a Lasso regression for each value of $\lambda$ in this sequence. Using the `seq` function, create a *decreasing* sequence of 21 integers ranging from 20,000 to 0, decreasing by increments of 1,000. Save this sequence to a variable called `grid`. 
+```{r}
+grid<-seq(20000,0, by = -1000)
+```
+
+c. Using the `glmnet()` function from the `glmnet` package, estimate a Lasso model (`alpha = 1`) where the outcome is `y`, the set of potential predictors is given by `x`. Specify the sequence of penalty parameters defined previously, using the `lambda` argument in the `glmnet` function. Save the output of the `glmnet` function to a variable called `lasso_1`.
+```{r}
+library(glmnet)
+lasso_1<-glmnet(x,y,lambda = grid,alpha = 1)
+```
+
+d. Using the `coef` function, print the coefficients of all the (21) models estimated in the previous step (1 model per penalty parameter in the sequence specified by `grid`).
+```{r}
+coef(lasso_1)
+```
+
+e. Using the `plot.glmnet` function, plot the coefficients (y-axis) against the log-lambda sequence (x-axis). What happens to the coefficients as $\lambda$ increases?  Why?
+```{r}
+plot.glmnet(lasso_1,xvar="lambda")
+
+```
+<br>As the the value of $\lambda$ increase, the number of non-zero coefficients decrease. Since lasso shrinks the coefficient estimates towards zero and the $\lambda$ works as the magnitude of the penalty term,so as $\lambda$ get larger, more coefficient estimates towards zero.
+
+
+<br>f. When $\lambda$ is sufficiently large, which variables are included in the model (i.e. which variables have a non-zero coefficient)? Why?
+
+<br>If $\lambda$ is really large, all variables will be removed. Because as the the value of $\lambda$ increase, the number of non-zero coefficients decrease, since the $\lambda$ works as the magnitude of the penalty term. And we can also see this from the result of question (d) above. 
+
+
+<br>g. Which variables are the most predictive? (Hint: which variables are the first to be included in the model, i.e. have a non-zero coeficient, as lambda decreases). Discuss this in a way that a smart person who is not familiar with Lasso could understand.
+
+<br>According to the result of question(b), as $\lambda$ decrease, the first predictor enter the model is `msa` which implies that `msa` has the most influence on the current unpaid balance. Therefore, `mas` is the most predictive.
+
+
+
+# Problem 2: Cross-Validation
+You will now use 5-fold cross-validation to pick the best choice of $\lambda$ from among the values in `grid`, along with the associated Lasso model from Problem 1.
+
+a. Use the `cv.glmnet()` function from the `glmnet` package to estimate the same Lasso regression from Problem 1 along with 5-fold cross-validated MSE. (Hint: you will use the same outcome `y`, predictors `x`, and sequence of `lambda` as before.) Save the output of the `cv.glmnet()` command to a variable called `cvfit_1`.
+```{r}
+set.seed(1)
+cvfit_1<-cv.glmnet(x,y,lambda = grid,nfolds = 5,type.measure = "mse")
+```
+
+b. Create a line plot of CV-MSE (y-axis) as a function of $\lambda$ (x-axis). (Hint: type `names(cvfit_1)` to see what variables are stored in the output from the `cv.glmnet` function. You may find `mse` and `lambda` to be helpful.)
+```{r}
+plot(cvfit_1)
+```
+
+
+c. What is the optimal $\lambda$ value according to the CV MSE?
+```{r}
+cvfit_1$lambda.min
+```
+<br>When $\lambda$ is zero, the MSE is the minimum. Therefore, the optimal $\lambda$ value is 0.
+
+d. Which variables are included (i.e. have non-zero coefficients) in the Lasso model corresponding to the penalty parameter $\lambda$ found to minimize CV-MSE? 
+```{r}
+coef(cvfit_1, s = "lambda.min")
+```
+As we can see from above, all the variables are included. Becasue when $\lambda$ is zero, the the magnitude of the penalty term is zero and all variables are included in the model.
+
+# Problem 3: Choice of Penalty Parameters ($\lambda$'s)
+This problem is optional. If you solve it, please let the professor know! 
+
+Redo Problem 1 and 2, but use the default options for $\lambda$ instead of supplying your own sequence of penalty parameters.
+```{r}
+lasso_2<-glmnet(x,y,alpha = 1)#use default options for $\lambda$
+set.seed(1)
+cvfit_2<-cv.glmnet(x,y,nfolds = 5,type.measure = "mse")
+```
+
+a. How many interactions were computed to find the best $\lambda$? 
+```{r}
+length(cvfit_2$lambda) #What is the interactions mean? include the interactions between the predictors?
+
+```
+The best $\lambda$ is selected from 65 $\lambda$s. So we went through 65 times computation with different $\lambda$ and one more comparison between these MSEs to get the best $\lambda$.
+
+b. Plot the $\lambda$ on the x-axis and the value of the coefficients on the y-axis.
+```{r}
+plot.glmnet(lasso_2,xvar="lambda")
+```
+
+c. What is the best predictor for current UPB when $\lambda$ is the largest in this output? Given this, what can we say about the best predictor of any model when we have a very high tuning parameter?
+
+
+```{r}
+lambda_id<-which(cvfit_2$lambda == max(cvfit_2$lambda))
+coef(cvfit_2, s = lasso_2$lambda[lambda_id])
+```
+When $\lambda$ is the largest, all estimated parameter have be shrinked to zero so that we cannot know the best predictors.
+We usually cannot find the best predictor of any model when we have a very high tuning parameter, since we might not have any predictors in the model.
+
+
+c. What is the optimal lambda value according to the CV MSE? What variables are included in the optimal Lasso model (ie have non-zero coefficients)?
+```{r}
+cvfit_2$lambda.min
+coef(cvfit_2, s = "lambda.min")
+```
+The optimal lambda value, according to the CV MSE, is 37.49468. All the variables are included in the optimal Lasso model except prop_typeLH.
+
+e. Compare the best model with the one chosen in problem 2. Why do you have different values? What is the MSE in each case?
+
+```{r}
+coef(cvfit_1, s = "lambda.min")#model chosen in problem 2
+lambda_id1<-which(cvfit_1$lambda == cvfit_1$lambda.min)
+cvfit_1$cvm[lambda_id1]
+coef(cvfit_2, s = "lambda.min")#model chosen in problem 3
+lambda_id2<-which(cvfit_2$lambda == cvfit_2$lambda.min)
+cvfit_2$cvm[lambda_id]
+
+difference<-cvfit_1$cvm[lambda_id1]-cvfit_2$cvm[lambda_id]#difference
+difference
+```
+The new model doesn't include the `prop_typeLH`, but the best model chosen in problem 2 includes it. Because we have different optimal $\lambda$ values in these two model.
+The MSE of previous model is 6149871727; the MSE of new model is 6798593052.
+
+# Problem 4: Lasso vs Ordinary Least Squares (OLS)
+This problem is optional. If you solve it, feel free to let the professor know.
+
+In this problem you will compare the fit from Ordinary Least Squares (OLS) and Lasso. First, use the `glm` function to fit a linear model to the data using all available predictors. Then fit a Lasso and predict the value for $\lambda = 0$. 
+
+a. How do the coefficients from the Lasso regression with $\lambda = 0$ compare to the coefficients from an OLS regression with all available predictors?  
+
+```{r}
+ols<-glm(y~x)
+ols$coefficients
+lasso4<-glmnet(x,y,lambda = 0,alpha = 1)
+lasso4$beta
+```
+
+As we can see from the result above, they are very close to each other.
+
+b. Why is this the case?  (Can you answer this question before comparing the Lasso and OLS output? Hint: how do the Lasso and OLS objective functions compare when $\lambda=0$?)
+
+Because the $\lambda$ in the lasso regression works as the magnitude of the penalty term. When $\lambda$ equals to zero, the penalty term disappear and the objective function of Lasso regression become the same as that of OLS.
+
+In general, we won't solely use $\lambda = 0$ when estimating a Lasso regression, since it would be easier to just run OLS.  Instead, we can include 0 as one of several possible values for $\lambda$.  We then compare the model fit as we vary the tuning parameter.
