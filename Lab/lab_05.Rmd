@@ -1,0 +1,117 @@
+---
+title: "Lab 05 - Simple Linear Regression"
+author: Jinran Yang
+date: Assignment due by 11:59PM on Friday, 9/21/2018
+output:
+  html_document:
+  theme: simplex
+  fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(error = TRUE)
+```
+
+# Getting started
+In this assignment, you will analyze the Freddie Mac data using two simple linear models with credit score as the explanatory variable. 
+
+Start by loading the packages `ggplot2`, `tidyverse` and `stargazer`. Also load the Freddie Mac data you downloaded from S3, per the assignment instructions. You will work only with unique values per loan. After loading your data, run the code below to filter out duplicated observations of `id_loan` and observations with a credit score below 500.
+
+```{r, message=FALSE}
+require(tidyverse)
+library(ggplot2)
+library(stargazer)
+# Load the Freddie Mac data
+load("data/cleaned_Freddie_Mac.Rdata")
+names(orig_svcg)
+
+orig_svcg_nodup <- filter(orig_svcg, duplicated == FALSE)%>%filter(fico>=500)
+rm(orig_svcg)
+```
+
+# Problem 1: Visualize the data
+## Credit scores and interest rates
+Using ggplot, create a scatter plot that shows the relationship between fico scores (x-axis) and the original interest rate (y-axis) for mortgages in these data. What does this plot suggest about the relationship between an individual's credit score and mortgage interest rate?
+```{r, warning=FALSE}
+orig_svcg_nodup%>%
+  group_by(fico)%>%
+  mutate(mean_int_rt = mean(int_rt))%>%
+ggplot()+geom_point(aes(x=orig_svcg_nodup$fico, y = mean_int_rt)) +ggtitle("Mean of Interest Rate by FICO Score") +
+  xlab("FICO") + ylab("Mean of Interest Rate")
+```
+
+
+Since there are too many interest rates for the same credit score, I plot the mean of the interest rate for every credit score in order to see the trend of the data.
+The scatter plot suggests that there seems exist a slightly negative relationship between individual's credit score and mean of mortgage interest rate.
+
+## Debt-to-income ratios and interest rates
+Using ggplot, create a scatter plot that shows the relationship between the original debt-to-income ratio (x-axis) and the interest rate (y-axis) for mortgages in these data. What does this plot suggest about the relationship between an individual's debt-to-income ratio and mortgage interest rate?
+```{r, warning=FALSE}
+orig_svcg_nodup%>%
+  group_by(dti)%>%
+  mutate(mean_int_rt = mean(int_rt))%>%
+ggplot()+geom_point(aes(x=dti, y =mean_int_rt))+ggtitle("Mean of Interest Rate by Debt-to-Income Ratio") +
+  xlab("Original Debt-to-Income Ratio") + ylab("Mean of Interest Rate")
+```
+
+
+The scatter plot suggests that there seems exist a positive relationship between individual's debt-to-income ratio and the mean of mortgage interest rate.
+
+# Problem 2: Estimate a linear model
+## Credit scores and interest rates
+Use the `lm()` command to estimate a simple linear regression where the outcome (left-hand side) is the mortgage interest rate and the independent variable (right-hand side) is the fico score. *What do these results imply about the relationship between credit scores and interest rates? Briefly explain why this makes sense.*
+
+Is the estimated coefficient on the independent variable "statistically significant," as defined as being at least two standard errors away from zero? You may wish to use the `summary()` command along with the model output to view the standard error associated with each estimate.
+
+```{r}
+# Estimate the linear model, and assign the output to a variable
+lm_fico <- lm(orig_svcg_nodup$int_rt ~ orig_svcg_nodup$fico)
+summary(lm_fico)
+```
+The result suggests that the credit score is statistically significant to the interest rate and there seems exist a slightly negative linear relationship between individual's credit score and mortgage interest rate. The estimated coefficient on the credit score is "statistically significant," since it is more than two standard errors away from zero.
+
+Edit the following code to print a correct and readable conclusion of these results.
+```{r}
+paste("Each 100 point increase in an individual's FICO score corresponds to a",
+      round(100*lm_fico$coefficients[2],2),
+      "percentage point change in the interest rate")
+```
+
+## Debt-to-income ratios and interest rates
+Use the `lm()` command to estimate a simple linear regression where the outcome (left-hand side) is the mortgage interest rate and the independent variable (right-hand side) is the original debt-to-income ratio. *What do these results imply about the relationship between debt-to-income ratios and interest rates? Briefly explain why this makes sense.*
+
+Is the estimated coefficient on the independent variable "statistically significant," as defined as being at least two standard errors away from zero? You may wish to use the `summary()` command along with the model output to view the standard error associated with each estimate.
+
+```{r}
+# Estimate the linear model, and assign the output to a variable
+lm_dti <- lm(orig_svcg_nodup$int_rt ~orig_svcg_nodup$dti )
+summary(lm_dti)
+```
+
+
+The result suggests that the credit score is statistically significant to the interest rate and there seems exist a moderate positive linear relationship between debt-to-income ratios and interest rates. The estimated coefficient on the credit score is "statistically significant," since it is more than two standard errors away from zero.
+
+
+Edit the following code to print a correct and readable conclusion of these results.
+```{r}
+paste(
+  "Each 10 percentage point increase in an individual's original debt-to-income ratio corresponds to a",
+  round(10*lm_dti$coefficients[2],2),
+  "percentage point change in the interest rate")
+```
+
+
+
+# Problem 3: Mean squared error (MSE)
+Calculate the MSE for each of the models estimated above. Does an individual's credit score or debt-to-income ratio do a better job of fitting the interest rate the indivdual faces on the mortgage?
+
+```{r}
+# MSE for int_rt~fico
+mse_fico = mean(lm_fico$residuals^2)
+mse_fico
+# MSE for int_rt~dti
+mse_dti = mean(lm_dti$residuals^2)
+mse_dti
+
+```
+According to the MSE values corresponding to these two model, individual's credit score does a better job of fitting the interest rate the indivdual faces on the mortgage
