@@ -1,0 +1,168 @@
+---
+title: "Lab 11 -- Bagging, random forests and boosting"
+author: JINRAN YANG
+date: Assignment due by 11:59PM on Friday, 10/26/2018
+output:
+  html_document:
+  theme: simplex
+fig_caption: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Getting started
+In this assignment, you will apply different tree-based models to a dataset of NYC yellow taxi trips. The dictionary and other details of the data can be found [here](http://www.nyc.gov/html/tlc/html/about/trip_record_data.shtml).
+
+Start by loading the packages `tidyverse`, `rpart`, `rpart.plot`, `randomForest`, and `gbm`. Also load the NYC taxi data you downloaded from S3, per the assignment instructions. The data looks is composed of a sample of trips from May 2018.  
+
+The goal is to develop trees that predict how much tip the driver receives after a trip based on the information we have about that trip. Read the code below to load the data. In problem 1 you will prepare the data, problems 2-5 you will build the trees, and in problem 6 you will analyze the results.
+
+*Hint* This is a large dataset, and building trees can be computationally expensive. Make sure your environment is empty before trying to knit the file. Also, keep your code clean - avoid creating unnecessary objects. If you still have problems with allocating memory, try restarting R.
+
+```{r chunk_load}
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+
+# Read the data
+taxi <- readRDS("yellow_taxi_data.RDS")
+```
+
+# Problem 1 - Prepare the data
+Take the following steps to prepare the dataset:
+
+1. Generate the variables:
+  - `weekend`: binary variable, equals 1 if trip was taken in a weekend.
+  - `hour_pickup`: numeric variable with integer equal to the hour the trip was taken.
+  - `credit_card`: binary variable, equals 1 if trip was paid with a credit card.
+  - `std_rate`: binary variable, equals 1 if rate of the trip was standard.
+  
+2. Keep only these variables in your data: `passenger_count`, `trip_distance`, `weekend`, `hour_pickup`, `credit_card`, `std_rate`, `tip_amount`, `fare_amount`
+
+3. Filter your data keeping only complete and distinct cases.
+
+4. Build the training and testing dataset, each with half of the data. 
+
+5. Remove the original dataset.
+```{r}
+library(lubridate)
+taxi<-taxi%>%
+  mutate(weekend=ifelse(wday(tpep_pickup_datetime)==6,1,ifelse(wday(tpep_pickup_datetime)==7,1,0)),
+         hour_pickup=hour(tpep_pickup_datetime),
+         credit_card=ifelse(payment_type == 1,1,0),
+         std_rate=ifelse(RatecodeID == 1,1,0))%>%
+  dplyr::select(-tpep_pickup_datetime, -RatecodeID, -payment_type)%>%
+  unique()%>%
+  filter(complete.cases(.))
+
+set.seed(1)
+train_data <- sample_frac(taxi,0.5)
+test_data <- dplyr::setdiff(taxi,train_data)
+rm(taxi)
+#timeDate::isWeekday(taxi$tpep_pickup_datetime[],wday=1:5),0,1
+#wday(tpep_pickup_datetime)==6,1,ifelse(wday(tpep_pickup_datetime)==7,1,0)
+#weekend = ifelse(chron::is.weekend(tpep_pickup_datetime),1,0)
+```
+
+# Problem 2 - Tree
+Build and plot a tree to explain `tip_amount` and compute the MSE in the test dataset.
+```{r}
+tree_form <- formula(tip_amount ~ .)
+model.matrix(tree_form, data = train_data) %>% colnames()
+set.seed(1)
+tree_tip <- rpart(tree_form, data = train_data)
+summary(tree_tip)
+# Predict in the test data
+tree_predict <- predict(tree_tip , newdata = test_data)
+# MSE
+mean((tree_predict - test_data$tip_amount)^2)
+```
+
+# Problem 3 - Bagging
+Use a bagging strategy to impove your model. Modify the random forest algorithm to simulate in 100 trees. Check visually the importance of each variable, and compute the test MSE.
+```{r}
+set.seed(1)
+bag_tip <- randomForest(tree_form, data = train_data, mtry = 7,ntree=100, importance = TRUE)
+# Call the object to see the number of trees and the variables used in each split
+bag_tip
+varImpPlot(bag_tip)
+# Test the model
+bag_predict <- predict(bag_tip, test_data)
+# MSE
+mean((bag_predict - test_data$tip_amount)^2)
+```
+
+# Problem 4 - Random forest
+Build the tree using two variations of the random forest strategy, limiting the number of predictors in your model to 2 and 4 variables. Simulate in 100 trees. Compute the test MSE for each strategy.
+```{r}
+#limiting the number of predictors =2
+set.seed(1)
+rf_tip1 <- randomForest(tree_form, data = train_data, mtry = 2,ntree=100, importance = TRUE)
+varImpPlot(rf_tip1)
+# Test the model
+rf_predict1 <- predict(rf_tip1, test_data)
+# MSE
+mean((rf_predict1 - test_data$tip_amount)^2)
+
+#limiting the number of predictors =4
+set.seed(1)
+rf_tip2 <- randomForest(tree_form, data = train_data, mtry = 4,ntree=100, importance = TRUE)
+varImpPlot(rf_tip2)
+# Test the model
+rf_predict2 <- predict(rf_tip2, test_data)
+# MSE
+mean((rf_predict2 - test_data$tip_amount)^2)
+```
+
+# Problem 5 - Boosting
+Apply boosting to improve your model, using both the default interaction depth (1) and then setting it equal to 3. Modify the algorithm to simulate with 100 trees.
+```{r}
+# interaction depth =1
+set.seed(1)
+boost_tip <- gbm(tree_form, data = train_data, distribution = "gaussian", n.trees = 100, interaction.depth = 1) 
+summary(boost_tip)
+# Test the model (n.trees has to be specified)
+boost_predict1 <- predict(boost_tip, test_data, n.trees = 100)
+# MSE
+mean((boost_predict1 - test_data$tip_amount)^2)
+
+# interaction depth =3
+set.seed(1)
+boost_tip2 <- gbm(tree_form, data = train_data, distribution = "gaussian", n.trees = 100, interaction.depth = 3)
+summary(boost_tip2)
+# Test the model (n.trees has to be specified)
+boost_predict2 <- predict(boost_tip2, test_data, n.trees = 100)
+# MSE
+mean((boost_predict2 - test_data$tip_amount)^2)
+```
+
+# Problem 6 - Analyze
+Build a table with the name of the method, the most important variable according to that method, and the test MSE. 
+```{r}
+mytable<-rbind(c("fare_amount"," fare_amount & credit_card ","credit_card",
+                " fare_amount & credit_card ","fare_amount","fare_amount"),
+              c(3.273315,3.222689,3.058072,3.201086,3.975754,3.103037))
+row.names(mytable) <- c("Most Important variable","MSE")
+knitr::kable(mytable, digits = 4, row.names = TRUE, col.names = c("Tree", "Bagging","RandomForest(2)","RandomForest(4)","Boosting(1)","Boosting(3)"), 
+      align = "c", caption = "MSE - Methods",  format = "markdown", padding = 0)
+```
+
+- Which model is the best according to the MSE?
+<br> According to the MSE, random forest limiting the number of predictors in model to 2 variables the best.
+
+- Can you provide an intuition for why there are differences between the two random forest models, and between the two boosting models?
+
+<br> The difference between two random forest models is the number of variables randomly sampled as candidates at each split. It affects how we choose a variable to began to spilt and it affects the result a lot if the data is correlated. In this case, the model with `mtry=4` has a little larger MSE than the model `mtry=2`, this might because it samples more variables as candidates which increases the probability that models choose the same unappropriate variables to start spilt.  
+
+<br> The difference between two boosting models is the maximum depth(i.e., the highest level of variable interactions allowed) of each tree. According to the value of  MSE, the model with higher value of maximum depth has a smaller MSE, this probably because growing bigger tree might help explain the `tip_amount`.
+
+
+- Choose one model and interpret the results. What is your explanation for the variables that (do not) matter for explaining how much tip a driver earns in a trip?
+
+<br> Based on the boosting model with `interaction.depth = 3`, `weekend` and `passenger_count` do not matter for explaining how much tip a driver earns in a trip. This might because people usually are not influenced by the time when they tip the driver. This makes sense, since people's behaviors are consistent over a short period of time. And usually, since no matter how many passengers are in the car, there will be only one of them pay for it, so that the tip are not affected by the number of passengers.
+
+
+	
