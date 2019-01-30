@@ -1,0 +1,172 @@
+---
+title: "Lab 10 -- Tree-Based Models"
+author: JINRAN YANG
+date: Assignment due by 11:59PM on Sunday, 10/21/2018
+output:
+  html_document:
+  theme: simplex
+fig_caption: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Getting started
+In this assignment, you will apply a tree-based model to the Freddie Mac Data, building on the models discussed in class.
+
+Start by loading the packages `tidyverse`, `tree` and `rpart.plot` (optional). Also load the Freddie Mac data you downloaded from S3, per the assignment instructions. The data looks at loans 48 months after the scheduled first month of payment.  
+
+Run the code below to prepare the data by making the same changes you did in Lab 09 and to drop observations with any missing from the dataset. Make sure the variable `d180` is a factor - you will need this to make the predictions.
+
+```{r}
+library(tidyverse)
+library(tree)
+library(rpart.plot)
+
+# Load data into R workspace
+load("orig_svcg_default_2015_Freddie_Mac.Rdata")
+
+# Prepare the data set
+orig_svcg_2005 <- orig_svcg_2005 %>%
+  mutate(msa = ifelse(is.na(cd_msa),1,0),
+         other_services = ifelse(servicer_name == "Other servicers", 1, 0))
+
+orig_svcg_2005 <- orig_svcg_2005 %>% 
+  dplyr::select(-id_loan, -servicer_name, -cd_msa) %>%
+  filter(complete.cases(.))
+```
+
+In all problems, modify the complexity parameter of the fit. This parameter is a threshold value for a decrease in overall lack of fit for any split. cp's default value is 0.01, but for complex problems you can relax it, allowing for more splits to happen. Add the option `control = rpart.control(cp = 0.001)` in the `rpart` command.
+
+In problems 1-3, you will work with a training dataset. In problem 4, you will evaluate the tree using the test dataset. Remember to define such datasets before you start working with the data.
+
+# Problem 1: Fit the model
+In this problem you will fit a model using a decision tree to predict default, here represented by the variable `d180`. The predictors included in your model should be `current_upb` `fico` `flag_fthb` `cnt_units` `occpy_sts` `prop_type` `cnt_borr` `msa`  `other_services`. Make sure that any categorical variables are entered into the model as factor variables.
+
+Set the random seed equal to 1, then estimate the decision tree using the `rpart` command with the complexity parameter threshold set to `cp = 0.001` as described above.
+```{r}
+set.seed(1)
+#categorical_var "d180","flag_fthb","occpy_sts","prop_type","other_services","msa"
+orig_svcg_2005$d180<-factor(orig_svcg_2005$d180)
+orig_svcg_2005$flag_fthb <-factor(orig_svcg_2005$flag_fthb)
+orig_svcg_2005$occpy_sts <-factor(orig_svcg_2005$occpy_sts )
+orig_svcg_2005$prop_type <-factor(orig_svcg_2005$prop_type)
+orig_svcg_2005$other_services <-factor(orig_svcg_2005$other_services)
+orig_svcg_2005$msa <-factor(orig_svcg_2005$msa)
+sapply(orig_svcg_2005,class)#check variables' data type
+#spilt dataset
+train_data <- sample_frac(orig_svcg_2005, 0.5)
+test_data <- setdiff(orig_svcg_2005, train_data)
+tree <- rpart(d180 ~ ., data = train_data,cp = 0.001)
+summary(tree)
+```
+
+* What is the size of this tree (i.e. how many nodes does the tree have)? Discuss.
+<br>The tree has 1 nodes with 14888 observations, which means it fails to build a decision tree given the dataset. Therefore, there might no variables and splits that could produce more homogenous subgroups than the original group.
+
+* What is the proportion of cases of default and non-default in the root node?
+<br>The proportion of default(d180 = 1) is 0.108; the proportion of non-default(d180 = 0) is 0.892
+
+* Using the model you just estimated, what is the predicted probability of default of a mortgage with the following characteristics: fico = 700, current UPB = 100,000, first time homebuyer, one-unit property, property type = single family home, number of borrowers = 2,  not living in a MSA, servicer of the mortgage not included in the category "other servicers", occupied by the owner? And the class of prediction (default or non-default)?
+<br>As it failed to build a desicion tree, the predicted probability of the above observation of default(d180 = 1) is 0.108.
+
+# Problem 2: Loss matrix
+In Problem 1 you saw that building a nice decision tree for credit risk data is hard. Now you will apply a correction method to improve your fit by including a "loss matrix." 
+
+A loss matrix changes the penalization for misclassifying a default as a non-default, and of misclassifying a non-default as a default. It is reasonable to expect a bank to be more worried abou the former, therefore you will increase that cost of misclassification.
+
+Fit the same tree as Problem 1 but now add the option `parms = list(loss = matrix(c(0, 10, 1, 0), ncol = 2))`. This changes the loss matrix by increasing ten times the penalization for the misclassification we just mentioned. See the help function of the package to see the details.
+```{r}
+tree2 <- rpart(d180 ~ ., data = train_data, cp = 0.001,parms = list(loss = matrix(c(0, 10, 1, 0), ncol = 2)))
+summary(tree2)
+```
+
+* What is the size of this tree (i.e. how many nodes does the tree have)? Discuss how this compares to the size of tree from Problem 1, and why.
+<br>The tree has 3243 nodes, this is much larger than the previous one. Because it penalized misclassify a default as a non-default ten times than misclassify a non-default as a default.
+
+* What is the most important variable in this tree for prediction? At which value does it split the data?
+<br>According to the result above, `fico` is the most important variable. It uses 734.5 as a threshold to spilt the data.
+
+* Using the model you just estimated, what is the predicted probability of default of a mortgage with the following characteristics: fico = 700, current UPB= 100,000, first time homebuyer, one-unit property, property type = single family home, number of borrowers = 2,  not living in a MSA, servicer of the mortgage not included in the category "other servicers", occupied by the owner?
+```{r}
+newdata=data.frame(current_upb = 100000,fico=700,flag_fthb="Y", cnt_units = 1,prop_type = "SF",cnt_borr = 2, msa=0,other_services= 0,occpy_sts="O")
+newdata$flag_fthb <-factor(newdata$flag_fthb)
+newdata$occpy_sts <-factor(newdata$occpy_sts )
+newdata$prop_type <-factor(newdata$prop_type)
+newdata$other_services <-factor(newdata$other_services)
+newdata$msa <-factor(newdata$msa)
+predict(tree2, newdata=newdata)
+```
+According to the result above, the new observation is 6.036446% (d180=1) to be default; 96.96355% to be non-default (d180 = 0).
+
+
+# Problem 3: Prune the tree
+The tree you obtained in problem 2 is quite large and complex, so in this exercise you will prune the tree to try to find the optimal tree with fewer splits. 
+
+1. Use the command `printcp` to find the best fit, using the cross-validation estimates of misclassication error `xerror`. The default option is a 10-fold CV. See `xval` in the details of `rpart.control` option.
+```{r}
+printcp(tree2)
+```
+
+2. Plot the errors as a function of cp/number of splits by using `plotcp`.
+```{r}
+plotcp(tree2)
+```
+
+3. Use the correspondent `cp` value to prune the tree. 
+```{r}
+# Create an index for of the row with the minimum xerror
+index <- which.min(tree2$cptable[ , "xerror"])
+# Create tree_min
+tree_min <- tree2$cptable[index, "CP"]
+prune_tree <- prune(tree2, cp = tree_min)
+printcp(prune_tree)
+```
+
+4. Plot the pruned tree.
+```{r}
+prp(prune_tree, extra = 1, box.palette = "auto")
+```
+
+
+* Which is the optimal cp? What is the cross-validation error correspondent to this cp?
+```{r}
+cat("The optimal cp is",tree2$cptable[index, "CP"],"\n")
+cat("The cross-validation error correspondent to this cp is",min(tree2$cptable[ , "xerror"]),"\n")
+```
+
+* How many nodes does the pruned tree have?
+```{r}
+summary(prune_tree) 
+```
+According to the result above, the pruned tree have 25 nodes.
+
+* What is the most important variable in this tree? In which value does it split the data?
+<br>The most important variable in this tree is `fico`, it uses 734.5 as a threshold to spilt the data.
+
+* What is the probability of default of a mortgage with the following characteristics: fico = 700, current UPB= 100,000, first time homebuyer, one-unit property, property type = single family home, number of borrowers = 2,  not living in a MSA, servicer of the mortgage not included in the category "other servicers", occupied by the owner?
+```{r}
+predict(prune_tree, newdata=newdata)
+```
+According to the result above, the new observation is 5.849802% (d180=1) to be default.
+
+* The column `rel error` reports the error computed in the training sample (more precisely, it is the ratio of the error in relation to the error root tree). What happens to this error as the number of splits increases? What does it say about the importance of testing the model in a sample different from the training sample?
+```{r}
+prune_tree$cptable
+```
+The `rel error` decreases as the the number of spilt increases. As we develop more spilts, the `rel error` will keeping decreasing and it might lead to overfitting problem. Therefore, we need another dataset which works as test dataset to test the model performance.
+
+# Problem 4: Accuracy of the model
+This problem is optional. If you complete it, please email the professor to let him know!
+
+Using the pruned tree from problem 3, predict default in the test data. Build the [confusion matrix](https://en.wikipedia.org/wiki/Confusion_matrix), assigning to default any predicted probability of default larger than 20%. What is the accuracy of your model?
+```{r}
+library(caret)
+predicted<-predict(prune_tree, newdata=test_data)
+predicted_default<-ifelse(predicted[,2]>0.2,1,0)
+predicted_default<-factor(predicted_default)
+true_value<-factor(test_data$d180)
+confusionMatrix(predicted_default,true_value)
+
+```
+According to the result above, the accuracy of the model is 73.4%.
